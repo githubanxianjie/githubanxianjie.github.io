@@ -1,0 +1,88 @@
+最近在做Android下的流量分析的一个功能,查阅了众多资料，在手机不用Root的情况下，可以设置代理，对流量分析。也可以使用Android系统提供的VpnService对流量进行截取。
+关于VpnService的具体流程，下面进行简单介绍。
+从Android 4.0开始，系统自带了一个在设备上建立VPN连接的解决方案，而且不需要root权限。关于VpnService系统自带的一个例子，可以参考系统自带的ToyVpn。这个是SDK源码里的一个例子。但这个例子是使用VPN进行远程连接的例子，对于流量分析功能，没有提到。要想使用VpnService进行抓包流量分析，需要对VpnService有详细的了解。
+VpnService原理
+这里我参考了博主Roland_Sun 的一篇博文，对VpnService进行了详细的分析。
+或者可以参考书：ANDROID安全架构深究_（美）NIKOLAYELENKOV著；刘惠明，刘跃译；（美）JON SAWYER作序；里面对VpnService也讲解的比较详细。
+在Android设备上，如果已经使用了VpnService框架，建立起一条从设备到远程服务器的VPN连接，那么数据包在设备上大致经历了如下四个过程的转换：
+
+1、             应用程序使用Socket，将相应的数据包发送到真实的网络设备上，一般移动设备只有无限网卡，因此是发送到真实的Wifi设备上的。
+2、             Android系统通过iptables,使用NAT，将所有的数据包转发到TUN虚拟网络设备上去，端口是tun0;
+3、             VPN程序通过打开/dev/tun设备，并读取该设备上的数据，可以获得所有的转发到Tun虚拟网卡上的数据包。因为设备上的所有IP包都会被NAT转成源地址是tun0端口发送的，所以也就是说你的VPN程序可以获得进出该设备的几乎所有的数据（也有例外，不是全部，比如回还数据无法获得）。
+4、             VPN数据可以做一些处理，然后将处理过后的数据包，通过真实的网络设备发送出去。为了防止发送的数据包再被转发到TUN虚拟网络设备上，VPN程序所使用的socket必须先被明确绑定到真实的网络设备上去。
+代码实现：
+         要实现Android设备上的VPN程序，一般需要分别实现一个继承Activity类的自带UI的客户端和一个继承自VpnService类的服务程序
+申明权限
+ 
+要想让你的VPN程序正常运行，首先必须要在AndroidManifest.xml中显示声明使用：
+“android.permission.BIND_VPN_SERVICE”权限。
+客户程序实现
+客户程序一般要首先调用VpnService.prepare函数：
+Intent intent = VpnService.prepare(this);  
+if (intent != null) {  
+    startActivityForResult(intent, 0);  
+} else {  
+    onActivityResult(0, RESULT_OK, null);  
+}  
+目前Android只支持一条VPN连接，如果新的程序想建立一条VPN连接，必须先中断系统中当前存在的那个VPN连接。
+同时，由于VPN程序的权利实在太大了，所以在正式建立之前，还要弹出一个对话框，让用户点头确认。
+
+VpnService.prepare函数的目的，主要是用来检查当前系统中是不是已经存在一个VPN连接了，如果有了的话，是不是就是本程序创建的。
+如果当前系统中没有VPN连接，或者存在的VPN连接不是本程序建立的，则VpnService.prepare函数会返回一个intent。这个 intent就是用来触发确认对话框的，程序会接着调用startActivityForResult将对话框弹出来等用户确认。如果用户确认了，则会关闭前面已经建立的VPN连接，并重置虚拟端口。该对话框返回的时候，会调用onActivityResult函数，并告之用户的选择。
+如果当前系统中有VPN连接，并且这个连接就是本程序建立的，则函数会返回null，就不需要用户再确认了。因为用户在本程序第一次建立VPN连接的时候已经确认过了，就不要再重复确认了，直接手动调用onActivityResult函数就行了。
+如果返回结果是OK的，也就是用户同意建立VPN连接，则将你写的，继承自VpnService类的服务启动起来就行了。
+当然，你也可以通过intent传递一些别的参数。
+服务程序实现
+服务程序必须要继承自android.NET.VpnService类：
+public class MyVpnService extendsVpnService ...
+VpnService类封装了建立VPN连接所必须的所有函数，后面会逐步用到。
+建立链接的第一步是要用合适的参数，创建并初始化好tun0虚拟网络端口，这可以通过在VpnService类中的一个内部类Builder来做到：
+Builder builder = new Builder();
+builder.setMtu(...);
+builder.addAddress(...);
+builder.addRoute(...);
+builder.addDnsServer(...);
+builder.addSearchDomain(...);
+builder.setSession(...);
+builder.setConfigureIntent(...);
+ 
+ParcelFileDescriptor interface =builder.establish();
+可以看到，这里使用了标准的Builder设计模式。在正式建立（establish）虚拟网络接口之前，需要设置好几个参数，分别是：
+1）MTU（MaximunTransmission Unit），即表示虚拟网络端口的最大传输单元，如果发送的包长度超过这个数字，则会被分包；一般设为1500
+2）Address，即这个虚拟网络端口的IP地址；这个地址可以去查查，我参考的360流量卫士里面的地址为192.168.*.*;好多也使用10.0.2.0；不确定，都可以试试。
+3）Route，只有匹配上的IP包，才会被路由到虚拟端口上去。如果是0.0.0.0/0的话，则会将所有的IP包都路由到虚拟端口上去；
+4）DNSServer，就是该端口的DNS服务器地址；
+5）Search Domain，就是添加DNS域名的自动补齐。DNS服务器必须通过全域名进行搜索，但每次查找都输入全域名太麻烦了，可以通过配置域名的自动补齐规则予以简化；
+6）Session，就是你要建立的VPN连接的名字，它将会在系统管理的与VPN连接相关的通知栏和对话框中显示出来
+
+7）Configure Intent，这个intent指向一个配置页面，用来配置VPN链接。它不是必须的，如果没设置的话，则系统弹出的VPN相关对话框中不会出现配置按钮。
+最后调用Builder.establish函数，如果一切正常的话，tun0虚拟网络接口就建立完成了。并且，同时还会通过iptables命令，修改NAT表，将所有数据转发到tun0接口上
+这之后，就可以通过读写VpnService.Builder返回的ParcelFileDescriptor实例来获得设备上所有向外发送的IP数据包和返回处理过后的IP数据包到TCP/IP协议栈：
+// Packets received need to be written tothis output stream.
+FileOutputStream out = newFileOutputStream(interface.getFileDescriptor());
+ 
+// Allocate the buffer for a single packet.
+ByteBuffer packet =ByteBuffer.allocate(32767);
+...
+// Read packets sending to this interface
+int length = in.read(packet.array());
+...
+// Write response packets back
+out.write(packet.array(), 0, length);
+ParcelFileDescriptor类有一个getFileDescriptor函数，其会返回一个文件描述符，这样就可以将对接口的读写操作转换成对文件的读写操作。
+每次调用FileInputStream.read函数会读取一个IP数据包，而调用FileOutputStream.write函数会写入一个IP数据包到TCP/IP协议栈。
+这其实基本上就是这个所谓的VpnService的全部了，是不是觉得有点奇怪，半点没涉及到建立VPN链接的事情。这个框架其实只是可以让某个应 用程序可以方便的截获设备上所有发送出去和接收到的数据包，仅此而已。能获得这些数据包，当然可以非常方便的将它们封装起来，和远端VPN服务器建立 VPN链接，但是这一块VpnService框架并没有涉及，留给你的应用程序自己解决。
+还有一点要特别解释一下，一般的应用程序，在获得这些IP数据包后，会将它们再通过socket发送出去。但是，这样做会有问题，你的程序建立的 socket和别的程序建立的socket其实没有区别，发送出去后，还是会被转发到tun0接口，再回到你的程序，这样就是一个死循环了。为了解决这个问题，VpnService类提供了一个叫protect的函数，在VPN程序自己建立socket之后，必须要对其进行保护：
+protect(my_socket);
+其背后的原理是将这个socket和真实的网络接口进行绑定，保证通过这个socket发送出去的数据包一定是通过真实的网络接口发送出去的，不会被转发到虚拟的tun0接口上去。
+好了，Android系统默认提供的这个VPN框架就只有这么点东西。
+最后，简单总结一下：
+1）VPN连接对于应用程序来说是完全透明的，应用程序完全感知不到VPN的存在，也不需要为支持VPN做任何更改；
+2）并不需要获得Android设备的root权限就可以建立VPN连接。你所需要的只是在你应用程序内的AndroidManifest.xml文件中申明需要一个叫做“android.permission.BIND_VPN_SERVICE”的特殊权限；
+3）在正式建立VPN链接之前，Android系统会弹出一个对话框，需要用户明确的同意；
+4）一旦建立起了VPN连接，Android设备上所有发送出去的IP包，都会被转发到虚拟网卡的网络接口上去（主要是通过给不同的套接字打fwmark标签和iproute2策略路由来实现的）；
+5）VPN程序可以通过读取这个接口上的数据，来获得所有设备上发送出去的IP包；同时，可以通过写入数据到这个接口上，将任何IP数据包插入系统的TCP/IP协议栈，最终送给接收的应用程序；
+6）Android系统中同一时间只允许建立一条VPN链接。如果有程序想建立新的VPN链接，在获得用户同意后，前面已有的VPN链接会被中断；
+7）这个框架虽然叫做VpnService，但其实只是让程序可以获得设备上的所有IP数据包。通过前面的简单分析，大家应该已经感觉到了，这个所 谓的VPN服务，的确可以方便的用来在Android设备上建立和远端服务器之间的VPN连接，但其实它也可以被用来干很多有趣的事情，比如可以用来做防火墙，也可以用来抓设备上的所有IP包。
+以上总结，大部分为Roland_Sun的精心总结。对VpnService分析的非常透彻，跟着博主的总结，基本上实现了上图中的（1）、（2）、（3）步骤，但所有的数据都被拦截在了自己搭建的服务器里面。想要实现第（4）步，即将拦截到的数据进行转发到真实的网卡上面，并获取到回传数据实现数据的流通程序，这个过程就有点复杂，这涉及到TCP、IP、UDP协议包的拆包、装包分析，将协议包数据拆开后，得到目的地址、源地址、源和目的端口号，并protect()下，将数据转发至真实网卡，实现数据的流通。
+         下面我仅提供一个1、2、3步骤的小demo VpnServiceDemo。中间的两个线程是拦截数据并抛出数据的过程，在日志打印就可以看到数据包的各种信息。第4步的工作量有点大，有精力的可以继续完成。
