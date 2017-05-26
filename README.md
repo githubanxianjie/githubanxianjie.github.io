@@ -4,4 +4,6 @@
 <li><a href="https://ydmmocoo.github.io/2016/06/28/Android-Studio%E6%8F%92%E4%BB%B6%E6%95%B4%E7%90%86/">Android Studio插件整理</a></li>
 <li><a href="http://m.blog.csdn.net/article/details?id=52859331">使用android studio将eclipse项目改造成gradle项目中踩过的坑</a></li>
 <li><a href="http://m.blog.csdn.net/article/details?id=52859331">Android的VpnService - 如何检查VpnService是否已启动？(Android VpnService - How to check VpnService if it was started?)</a></li>
+<li><a href="http://m.blog.csdn.net/article/details?id=52859331">https://github.com/githubanxianjie/githubanxianjie.github.io/blob/master/VPNService%E4%BD%BF%E7%94%A8~Android%E7%B3%BB%E7%BB%9F%E8%87%AA%E5%B8%A6%E7%9A%84VpnService%E6%88%AA%E5%8F%96%E6%B5%81%E9%87%8F</a></li>
 </ul>
+
