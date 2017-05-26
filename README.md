@@ -5,5 +5,6 @@
 <li><a href="http://m.blog.csdn.net/article/details?id=52859331">使用android studio将eclipse项目改造成gradle项目中踩过的坑</a></li>
 <li><a href="http://m.blog.csdn.net/article/details?id=52859331">Android的VpnService - 如何检查VpnService是否已启动？(Android VpnService - How to check VpnService if it was started?)</a></li>
 <li><a href="http://blog.csdn.net/jsqfengbao/article/details/52462125">VPNservice使用Android系统自带的VpnService截取流量</a></li>
+<li><a href="http://bbs.51cto.com/thread-1133875-1.html">Android异常之Service启动Activity</a></li>
 </ul>
 
