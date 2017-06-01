@@ -7,5 +7,6 @@
 <li><a href="http://blog.csdn.net/jsqfengbao/article/details/52462125">VPNservice使用Android系统自带的VpnService截取流量</a></li>
 <li><a href="http://bbs.51cto.com/thread-1133875-1.html">Android异常之Service启动Activity</a></li>
 <li><a href="http://www.jianshu.com/p/b1b185c21ecd">Android获取TextView显示的字符串宽度</a></li>
+<li><a href="http://gank.io/post/560e15be2dca930e00da1083#toc_4">给 Android 开发者的 RxJava 详解</a></li>
 </ul>
 
